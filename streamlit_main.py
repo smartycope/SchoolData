@@ -239,8 +239,6 @@ def show_target(bonds, coupons, key='1'):
 
 with st.expander("Generate a custom dataset from a given daterange", expanded=False):
     """
-    Generate a custom dataset from a given daterange
-
     Warning: large dateranges (>1 or 2 months) can take a while. Ranges > ~1 year may fail. Have Cope generate those manually
     """
     try:
