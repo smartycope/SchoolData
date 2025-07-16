@@ -224,8 +224,8 @@ def get_preloaded_data():
     # return pl.read_csv('backup_data/target.csv'),
     return decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.secrets['PASSWORD']), decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.secrets['PASSWORD'])
 
-def show_target(bonds, coupons):
-    base = st.number_input("Coupon rate you think you can get them right now", value=5.25)
+def show_target(bonds, coupons, key='1'):
+    base = st.number_input("Coupon rate you think you can get them right now", value=5.25, key=key+'base')
     coupons = coupons.with_columns(reward=(pl.col('coupon_rate') - base) * pl.col('par_amount'))
     target_coupons = coupons.filter(pl.col('coupon_rate') > base)
     target = target_coupons.rename({'deal_id': 'dealId'}).join(bonds, on='dealId', how='left').sort('reward', descending=True)
@@ -235,11 +235,12 @@ def show_target(bonds, coupons):
     target = pl.concat([df, target.filter(pl.col('par_amount').is_null())])
     st.write(target
         .select(column_order + [col for col in target.columns if col not in column_order])
-    )
+    , key=key+'target')
 
 with st.expander("Generate a custom dataset from a given daterange", expanded=False):
     """
     Generate a custom dataset from a given daterange
+
     Warning: large dateranges (>1 or 2 months) can take a while. Ranges > ~1 year may fail. Have Cope generate those manually
     """
     try:
@@ -297,4 +298,4 @@ with st.expander("Generate a custom dataset from a given daterange", expanded=Fa
 
 with st.expander("Pre-filtered data from 2016-12-21 to 2025-07-16", expanded=True):
     bonds, coupons = get_preloaded_data()
-    show_target(bonds, coupons)
+    show_target(bonds, coupons, key='2')
