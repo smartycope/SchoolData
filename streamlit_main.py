@@ -195,10 +195,34 @@ def get_deals(deal_ids):
     except:
         return coupons, school_bonus
 
+from cryptography.fernet import Fernet
+import base64
+import hashlib
+
+def password_to_key(password: str) -> bytes:
+    return base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
+
+def decrypt_file_to_df(encrypted_path: str, password: str):
+    key = password_to_key(password)
+    fernet = Fernet(key)
+
+    with open(encrypted_path, 'rb') as f:
+        encrypted = f.read()
+
+    try:
+        decrypted = fernet.decrypt(encrypted)
+    except Exception as e:
+        raise ValueError("Invalid password or corrupted file.") from e
+
+    from io import BytesIO
+    buffer = BytesIO(decrypted)
+
+    return pl.read_csv(buffer)
+
+
 def get_preloaded_data():
     # return pl.read_csv('backup_data/target.csv'),
-    return pl.read_csv('backup_data/bonds.csv'), pl.read_csv('backup_data/coupons.csv')
-
+    return decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.secrets['PASSWORD']), decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.secrets['PASSWORD'])
 
 def show_target(bonds, coupons):
     base = st.number_input("Coupon rate you think you can get them right now", value=5.25)
