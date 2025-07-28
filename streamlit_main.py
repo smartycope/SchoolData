@@ -496,10 +496,12 @@ shown = (
     .filter(nw.col('tic') > min_tic)
     # We have to make until a datetime, not a date, cause narwals in Pyodide can't support a date type column
     .filter(nw.col(until_col) < dt.combine(until, dt.min.time()))
-    .filter((nw.col('num_cusips') >= min_cusips) & (nw.col('num_cusips') <= max_cusips))
-    .filter((nw.col(range_col) >= range_min) & (nw.col(range_col) <= range_max))
     .sort('reward', descending=True)
 )
+if not dont_limit_range:
+    shown = shown.filter((nw.col(range_col) >= range_min) & (nw.col(range_col) <= range_max))
+if not dont_limit_cusips:
+    shown = shown.filter((nw.col('num_cusips') >= min_cusips) & (nw.col('num_cusips') <= max_cusips))
 if state != 'All':
     shown = shown.filter(nw.col('state') == state)
 
