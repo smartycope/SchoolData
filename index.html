@@ -14,18 +14,21 @@
     />
 </head>
 <body>
+    <div id="root"></div>
     <script type="module">
         import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser/build/stlite.js";
 
         mount({
+            entrypoint: "streamlit_main.py",
             files: {
-                "streamlit_main.py": {
-                    url: "streamlit_main.py",
+                    "streamlit_main.py": {
+                        // url: "./streamlit_main.py",
+                        url: "./streamlit_main.py",
+                    },
                 },
             },
-        },
-        document.getElementById("root"),
-    );
+            document.getElementById("root"),
+        );
     </script>
 </body>
 </html>
