@@ -1,9 +1,18 @@
-<script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.35.0/build/stlite.js"></script>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Streamlit App</title>
+</head>
+<body>
+    <h1>Streamlit App</h1>
+    <p>This is a simple Streamlit app.</p>
+    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.35.0/build/stlite.js"></script>
+    <script>
+    stlite.mount(`
+    import streamlit as st
 
-<script>
-stlite.mount(`
-import streamlit as st
-
-st.write("Hello, Stlite!")
-`)
-</script>
+    st.write("Hello, Stlite!")
+    `)
+    </script>
+</body>
+</html>
