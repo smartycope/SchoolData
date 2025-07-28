@@ -55,17 +55,17 @@ if True:
     # Password authentication
     if not st.session_state["authenticated"]:
         given_password = st.text_input("Enter password", key="password_input", type="password")
-        try:
-            st.session_state["authenticated"] = verify_password(given_password, password_hash)
+        if given_password and verify_password(given_password, password_hash):
+            st.session_state["authenticated"] = given_password
             st.rerun()
-        except:
-            st.write("Incorrect password. Please try again.")
+        elif given_password:
+            st.error("Incorrect password. Please try again.")
         st.stop()
 
 
 @st.cache_data
 def get_preloaded_data():
-    return decrypt_file_to_df('backup_data/bonds_encrypted.bin', given_password), decrypt_file_to_df('backup_data/coupons_encrypted.bin', given_password)
+    return decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.session_state["authenticated"]), decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.session_state["authenticated"])
 
 
 
