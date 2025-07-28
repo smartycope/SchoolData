@@ -12,17 +12,20 @@ from cryptography.fernet import Fernet
 import base64
 import hashlib
 
+from pbkdf2 import PBKDF2
+
 password_hash = {
-    'salt': 'iB8/Yzann0b8AXIB2vt9RQ==',
-    'hash': 'lC0xsC5D8lpNfg1d8DwFSDMaSVYncZcjjqd0Lb/M6eE=',
-    'iterations': 10000
+    'salt': '2GPP8XSd20Gxk3DVz5zAjg==',
+    'hash': '4PiICNNyJK7Huopj8QdO8kyPI8fcb68Td3kGfFkF5pQ=',
+    'iterations': 100000
 }
 
-def verify_password(password, hash):
-    salt = base64.b64decode(hash['salt'])
-    expected_hash = base64.b64decode(hash['hash'])
-    test_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, hash['iterations'])
+def verify_password(password, stored):
+    salt = base64.b64decode(stored['salt'])
+    expected_hash = base64.b64decode(stored['hash'])
+    test_hash = PBKDF2(password, salt, iterations=stored['iterations']).read(len(expected_hash))
     return test_hash == expected_hash
+
 
 
 def password_to_key(password: str) -> bytes:
