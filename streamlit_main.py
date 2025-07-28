@@ -4,29 +4,47 @@ from datetime import datetime as dt
 from datetime import timedelta
 import requests
 import json
-# import pandas as pd
-import polars as pl
+import narwhals as nw
+import pandas as pd
+
+# Configure Narwhals to use pandas as the backend
+# nw.config.set_backend('pandas')
 import pickle
 
 from cryptography.fernet import Fernet
 import base64
 import hashlib
-
-from pbkdf2 import PBKDF2
+import pprp
 
 password_hash = {
-    'salt': '2GPP8XSd20Gxk3DVz5zAjg==',
-    'hash': '4PiICNNyJK7Huopj8QdO8kyPI8fcb68Td3kGfFkF5pQ=',
-    'iterations': 100000
+    'salt': 'yITsoJop3O7QiNnzSdeTSA==',
+    'hash': '1KuqXs83yQ6v7vGqYvE2LJG0N4PpvNAYUbk5dHJ8Mes=',
+    'key_size': 32,
 }
 
-def verify_password(password, stored):
-    salt = base64.b64decode(stored['salt'])
-    expected_hash = base64.b64decode(stored['hash'])
-    test_hash = PBKDF2(password, salt, iterations=stored['iterations']).read(len(expected_hash))
-    return test_hash == expected_hash
+now = dt.now().strftime("%Y-%m-%d")
+search_url = "https://workspace.refinitiv.com/api/tm3-backend/muni-data-analysis/deal-search/search"
+detail_url = 'https://workspace.refinitiv.com/api/tm3-backend/muni-data-analysis/common/deal-analysis?dealId={deal_id}&evaluationDate='+now
+# TM3_URL = "https://workspace.refinitiv.com/muni-data-analysis/deal-search/deal/{deal_id}"
+TM3_DEAL_URL = "https://workspace.refinitiv.com/web/rap/tm3-app/muni-data-analysis/deal-search/details/{deal_id}/deal-analysis?evaluationDate="+now
+TM3_CUSIP_URL = 'https://workspace.refinitiv.com/web/rap/tm3-app/muni-data-analysis/cusip-search/details/{cusip}/main?evaluationDate=' + now
+EMMA_URL = 'https://emma.msrb.org/QuickSearch/Results?quickSearchText={cusip}'
+
+if 'search_log' not in ss: ss.search_log = []
+if 'detail_log' not in ss: ss.detail_log = []
+# Indexed by daterange
+if 'search_log_data' not in ss: ss.search_log_data = {}
+# Indexed by deal_id
+if 'detail_log_data' not in ss: ss.detail_log_data = {}
 
 
+
+def verify_password(password: str, stored: dict):
+    password_bytes = password.encode('utf-8')
+    salt = base64.b64decode(stored["salt"])
+    expected = base64.b64decode(stored["hash"])
+    dk = pprp.pbkdf2(password_bytes, salt, stored["key_size"])
+    return dk == expected
 
 def password_to_key(password: str) -> bytes:
     return base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
@@ -46,7 +64,7 @@ def decrypt_file_to_df(encrypted_path: str, password: str):
     from io import BytesIO
     buffer = BytesIO(decrypted)
 
-    return pl.read_csv(buffer)
+    return nw.from_native(pd.read_csv(buffer))
 
 st.set_page_config(page_title="School Data", layout="wide", page_icon="🏫", initial_sidebar_state="collapsed")
 
@@ -118,48 +136,62 @@ def get_preloaded_data():
     #         """ Data gathered so far: """
             # st.write(ss.detail_log_data)
 
-# with st.expander("Pre-filtered data from 2016-12-21 to 2025-07-16", expanded=True):
 bonds, coupons = get_preloaded_data()
+@st.cache_data
+def get_target():
+    global bonds, coupons
+    # Convert to Narwhals DataFrame and rename column
+    df = coupons.rename({'deal_id': 'dealId'})
 
-st.title("School Bonds")
-cookie = ''
-with st.sidebar:
-    # cookie = st.text_input("Auth Cookie (ask Cope, only lasts an hour or 2)")
-    # if cookie:
-    #     st.success("Cookie loaded")
-    precision = st.number_input("Precision", value=1, min_value=1, max_value=10, step=1, format='%d')
-    max_date = dt.strptime(bonds['datedDate'].max(), '%Y-%m-%d')
-    if max_date < dt.now() - timedelta(days=365):
-        box = st.error
-    elif max_date < dt.now() - timedelta(days=6*30):
-        box = st.warning
-    else:
-        box = st.success
-    l, r = st.columns([2, 1])
-    with l:
-        box(f"Data is <{int((dt.now() - max_date).days)*-1} days old")
-    if r.button('Update'):
-        st.warning('This button doesn\'t currently do anything, but it will soon!')
+    # Join with bonds
+    df = df.join(bonds, on='dealId', how='left')
 
-    f"""
-    Data range: {bonds['datedDate'].min()} to {max_date.strftime('%Y-%m-%d')}
+    # Convert date columns and create URL columns
+    df = df.with_columns(
+        # state=nw.col('state').cast(nw.String),
+        datedDate=nw.col('datedDate').str.to_datetime(),
+        maturity_date=nw.col('maturity_date').str.to_datetime(),
+        first_coupon_date=nw.col('first_coupon_date').str.to_datetime(),
+        first_call_date=nw.col('first_call_date').str.to_datetime(),
+        saleDate=nw.col('saleDate').str.to_datetime(),
+        TM3_url=nw.col('dealId').map_batches(lambda x: TM3_DEAL_URL.format(deal_id=x)),
+        TM3_cusip_url=nw.col('cusip').map_batches(lambda x: TM3_CUSIP_URL.format(cusip=x)),
+        emma_url=nw.col('cusip').map_batches(lambda x: EMMA_URL.format(cusip=x)),
+    )
 
-    - To download: there's a download button that shows up over the data as you hover over it
-    - To see which columns are hidden: click the eye icon that shows up over the data as you hover over it
-    - To sort: click the column headers
-    - To search for a specific row: use the search icon
+    # Calculate total par amount per deal
+    total_par = df.group_by('dealId').agg(total_par_amount=nw.col('par_amount').sum())
+    df = df.join(total_par, on='dealId', how='left')
 
-    The data is filtered by reward (`(coupon rate - specified rate) * par amount`) by default.
-    """
+    # Calculate weights and weighted rates
+    df = df.with_columns(
+        contrib=nw.col('par_amount') / nw.col('total_par_amount'),
+        weighted_rate=nw.col('coupon_rate') * (nw.col('par_amount') / nw.col('total_par_amount'))
+    )
 
+    # Group by dealId and calculate tic and collect cusips
+    grouped = df.group_by('dealId').agg(
+        tic=nw.col('weighted_rate').sum(),
+        # num_cusips=nw.col('cusip').count(),
+        num_cusips=nw.col('cusip').n_unique(),
+        # cusips=nw.col('cusip').collect(),
+        # TODO: come back to this
+        # cusips=nw.col('cusip').unique().cast(nw.List(nw.String))
+    )
 
-now = dt.now().strftime("%Y-%m-%d")
-search_url = "https://workspace.refinitiv.com/api/tm3-backend/muni-data-analysis/deal-search/search"
-detail_url = 'https://workspace.refinitiv.com/api/tm3-backend/muni-data-analysis/common/deal-analysis?dealId={deal_id}&evaluationDate='+now
-# TM3_URL = "https://workspace.refinitiv.com/muni-data-analysis/deal-search/deal/{deal_id}"
-TM3_DEAL_URL = "https://workspace.refinitiv.com/web/rap/tm3-app/muni-data-analysis/deal-search/details/{deal_id}/deal-analysis?evaluationDate="+now
-TM3_CUSIP_URL = 'https://workspace.refinitiv.com/web/rap/tm3-app/muni-data-analysis/cusip-search/details/{cusip}/main?evaluationDate=' + now
-EMMA_URL = 'https://emma.msrb.org/QuickSearch/Results?quickSearchText={cusip}'
+    # Join the aggregated data back to the original dataframe
+    df = df.join(grouped, on='dealId', how='left')
+
+    # Calculate number of cusips
+    # TODO: come back to this
+    # df = df.with_columns(num_cusips=nw.col('cusips').list.len())
+
+    # Put samples with a null par_amount at the bottom
+    # tmp = df.filter(~nw.col('par_amount').is_null())
+    # nulls = df.filter(nw.col('par_amount').is_null())
+    # df = nw.concat([tmp, nulls])
+
+    return df
 
 def search_req_body(saleDateFrom, saleDateTo):
     return {
@@ -214,17 +246,6 @@ def search_req_body(saleDateFrom, saleDateTo):
         "isAllIssueType": False
     }
 
-if 'search_log' not in ss:
-    ss.search_log = []
-if 'detail_log' not in ss:
-    ss.detail_log = []
-# Indexed by daterange
-if 'search_log_data' not in ss:
-    ss.search_log_data = {}
-# Indexed by deal_id
-if 'detail_log_data' not in ss:
-    ss.detail_log_data = {}
-
 def reset_logs():
     ss.search_log = []
     ss.detail_log = []
@@ -276,7 +297,7 @@ def get_schools(from_date, to_date):
         schools += search(i, i+timedelta(days=30))['data']
         i += timedelta(days=30)
     try:
-        return pl.DataFrame(schools)
+        return nw.DataFrame(schools)
     except:
         return schools
 
@@ -297,50 +318,44 @@ def get_deals(deal_ids):
             i['deal_id'] = deal_id
         coupons += cd
     try:
-        return pl.DataFrame(coupons), pl.DataFrame(school_bonus)
+        return nw.DataFrame(coupons), nw.DataFrame(school_bonus)
     except:
         return coupons, school_bonus
 
-@st.cache_data
-def get_target(coupons, bonds):
-    df = (coupons
-        .rename({'deal_id': 'dealId'})
-        .join(bonds, on='dealId', how='left')
-        .with_columns(
-            state=pl.col('state').cast(pl.Categorical),
-            datedDate=pl.col('datedDate').cast(pl.Date),
-            maturity_date=pl.col('maturity_date').cast(pl.Date),
-            first_coupon_date=pl.col('first_coupon_date').str.strptime(pl.Date, '%m/%d/%Y', strict=False),
-            first_call_date=pl.col('first_call_date').str.strptime(pl.Date, '%m/%d/%Y', strict=False),
-            saleDate=pl.col('saleDate').cast(pl.Date),
-            TM3_url=pl.col('dealId').map_elements(lambda x: TM3_DEAL_URL.format(deal_id=x)),
-            TM3_cusip_url=pl.col('cusip').map_elements(lambda x: TM3_CUSIP_URL.format(cusip=x)),
-            emma_url=pl.col('cusip').map_elements(lambda x: EMMA_URL.format(cusip=x)),
-        )
-        # Get the sums
-        .with_columns(total_par_amount=pl.col('par_amount').sum().over('dealId'))
-        # Get the weights
-        .with_columns(contrib=pl.col('par_amount') / pl.col('total_par_amount'))
-        # Weight the rates
-        .with_columns(weighted_rate=pl.col('coupon_rate') * pl.col('contrib'))
-    )
 
-    grouped = (df
-        # Sum the weighted rates
-        .group_by('dealId')
-        .agg(tic=pl.col('weighted_rate').sum(), cusips=pl.col('cusip'))
-    )
-    # Join the aggregated data back to the target
-    # I have no idea why this expands to the original number of rows, it shouldn't
-    df = grouped.join(df, on='dealId', how='left')
+target = get_target()
 
-    df = df.with_columns(num_cusips=pl.col('cusips').list.len())
+st.title("School Bonds")
+cookie = ''
+with st.sidebar:
+    # cookie = st.text_input("Auth Cookie (ask Cope, only lasts an hour or 2)")
+    # if cookie:
+    #     st.success("Cookie loaded")
+    precision = st.number_input("Precision (digits)", value=1, min_value=1, max_value=10, step=1, format='%d')
+    max_date = target['datedDate'].max()
+    if max_date < dt.now() - timedelta(days=365):
+        box = st.error
+    elif max_date < dt.now() - timedelta(days=6*30):
+        box = st.warning
+    else:
+        box = st.success
+    l, r = st.columns([2, 1])
+    with l:
+        box(f"Data is <{int((dt.now() - max_date).days)*-1} days old")
+    if r.button('Update'):
+        st.warning('This button doesn\'t currently do anything, but it will soon!')
 
-    # Put samples with a null par_amount at the bottom
-    tmp = df.filter(pl.col('par_amount').is_not_null())
-    df = pl.concat([tmp, df.filter(pl.col('par_amount').is_null())])
+    f"""
+    Data range: {target['datedDate'].min()} to {max_date.strftime('%Y-%m-%d')}
 
-    return df
+    - To download: there's a download button that shows up over the data as you hover over it
+    - To see which columns are hidden: click the eye icon that shows up over the data as you hover over it
+    - To sort: click the column headers
+    - To search for a specific row: use the search icon
+
+    The data is filtered by reward (`(coupon rate - specified rate) * par amount`) by default.
+    """
+
 
 hide = [
     'contrib',
@@ -422,7 +437,7 @@ hide_nulls = [
     'total_par_amount',
 ]
 
-target = get_target(coupons, bonds)
+
 # with st.form("Pre-filtered data"):
 with st.container(border=True):
     l, m, r = st.columns(3)
@@ -467,27 +482,38 @@ else:
     hide.append('tic')
 
 deals = target.unique('dealId') if not show_coupons else target
-shown = (deals
-    .with_columns(
-        reward=(pl.col('coupon_rate') - min_tic) * pl.col('par_amount'),
-        total_par_amount=pl.col('total_par_amount')/1000,
-        par_amount=pl.col('par_amount')/1000,
-        dealAmount=pl.col('dealAmount')/1000,
+shown = (
+    deals.with_columns(
+        reward=(nw.col('coupon_rate') - min_tic) * nw.col('par_amount'),
+        total_par_amount=nw.col('total_par_amount')/1000,
+        par_amount=nw.col('par_amount')/1000,
+        dealAmount=nw.col('dealAmount')/1000,
     )
-    .filter(pl.col('tic') > min_tic)
-    .filter(pl.col(until_col) < until)
-    .filter(pl.col('state') == state if state != 'All' else True)
-    .filter((pl.col('num_cusips') >= min_cusips) & (pl.col('num_cusips') <= max_cusips))
-    .filter((pl.col(range_col) >= range_min) & (pl.col(range_col) <= range_max))
+    .filter(nw.col('tic') > min_tic)
+    # We have to make until a datetime, not a date, cause narwals in Pyodide can't support a date type column
+    .filter(nw.col(until_col) < dt.combine(until, dt.min.time()))
+    .filter((nw.col('num_cusips') >= min_cusips) & (nw.col('num_cusips') <= max_cusips))
+    .filter((nw.col(range_col) >= range_min) & (nw.col(range_col) <= range_max))
     .sort('reward', descending=True)
 )
+if state != 'All':
+    shown = shown.filter(nw.col('state') == state)
+
 # st.write(exclude_null)
 for col in exclude_null:
-    shown = shown.filter(pl.col(col).is_not_null())
+    shown = shown.filter(~nw.col(col).is_null())
 
 st.write(f'`{len(shown)}`/`{len(deals if not show_coupons else target)}` {"schools" if not show_coupons else "coupons"} selected')
 
-st.dataframe(shown,
+shown_df = shown.to_pandas()
+# Convert datetime columns to string for display
+# for col in ['datedDate', 'maturity_date', 'first_coupon_date', 'first_call_date', 'saleDate']:
+#     if col in shown_df.columns and pd.api.types.is_datetime64_any_dtype(shown_df[col]):
+#         shown_df[col] = shown_df[col].dt.strftime('%Y-%m-%d')
+
+# Display the data
+st.dataframe(
+    shown_df,
     column_config=column_config | {name: None for name in hide},
     column_order=column_config.keys(),
 )
@@ -495,4 +521,3 @@ st.dataframe(shown,
 # import plotly.express as px
 # fig = px.histogram(data_frame=deals, x='num_cusips')
 # st.plotly_chart(fig)
-

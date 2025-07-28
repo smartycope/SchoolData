@@ -19,13 +19,12 @@
         import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser/build/stlite.js";
 
         mount({
-            requirements: ['requests', 'pandas', 'polars', 'cryptography', 'pbkdf2'],
+            requirements: ['requests', 'pandas', 'polars', 'cryptography', 'pprp', 'narwhals'],
             entrypoint: "streamlit_main.py",
             files: {
-                    "streamlit_main.py": {
-                        // url: "./streamlit_main.py",
-                        url: "./streamlit_main.py",
-                    },
+                    "streamlit_main.py": { url: "./streamlit_main.py" },
+                    "./backup_data/bonds_encrypted.bin": { url: "./backup_data/bonds_encrypted.bin" },
+                    "./backup_data/coupons_encrypted.bin": { url: "./backup_data/coupons_encrypted.bin" },
                 },
             },
             document.getElementById("root"),
