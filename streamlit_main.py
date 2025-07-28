@@ -12,10 +12,18 @@ from cryptography.fernet import Fernet
 import base64
 import hashlib
 
-from argon2 import PasswordHasher
+password_hash = {
+    'salt': 'iB8/Yzann0b8AXIB2vt9RQ==',
+    'hash': 'lC0xsC5D8lpNfg1d8DwFSDMaSVYncZcjjqd0Lb/M6eE=',
+    'iterations': 10000
+}
 
-password_hash = '$argon2id$v=19$m=65536,t=3,p=4$wx3vbueC16m6h3UGB0urHw$YFSm+BKidv75gb3Q9VOXhOnv/CpuqEXQOOGgVj1lTDc'
-ph = PasswordHasher()
+def verify_password(password, hash):
+    salt = base64.b64decode(hash['salt'])
+    expected_hash = base64.b64decode(hash['hash'])
+    test_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, hash['iterations'])
+    return test_hash == expected_hash
+
 
 def password_to_key(password: str) -> bytes:
     return base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
@@ -48,7 +56,7 @@ if True:
     if not st.session_state["authenticated"]:
         given_password = st.text_input("Enter password", key="password_input", type="password")
         try:
-            st.session_state["authenticated"] = ph.verify(password_hash, given_password)
+            st.session_state["authenticated"] = verify_password(given_password, password_hash)
             st.rerun()
         except:
             st.write("Incorrect password. Please try again.")
