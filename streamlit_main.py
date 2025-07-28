@@ -6,6 +6,7 @@ import requests
 import json
 import narwhals as nw
 import pandas as pd
+import numpy as np
 
 # Configure Narwhals to use pandas as the backend
 # nw.config.set_backend('pandas')
@@ -154,9 +155,12 @@ def get_target():
         first_coupon_date=nw.col('first_coupon_date').str.to_datetime(),
         first_call_date=nw.col('first_call_date').str.to_datetime(),
         saleDate=nw.col('saleDate').str.to_datetime(),
-        TM3_url=nw.col('dealId').map_batches(lambda x: TM3_DEAL_URL.format(deal_id=x)),
-        TM3_cusip_url=nw.col('cusip').map_batches(lambda x: TM3_CUSIP_URL.format(cusip=x)),
-        emma_url=nw.col('cusip').map_batches(lambda x: EMMA_URL.format(cusip=x)),
+        TM3_url=nw.col('dealId').map_batches(lambda x: np.array(TM3_DEAL_URL.format(deal_id=i) for i in x)),
+        TM3_cusip_url=nw.col('cusip').map_batches(lambda x: np.array(TM3_CUSIP_URL.format(cusip=i) for i in x)),
+        emma_url=nw.col('cusip').map_batches(lambda x: np.array(EMMA_URL.format(cusip=i) for i in x)),
+        # TM3_url=nw.col('dealId').str.replace(r'.*', TM3_DEAL_URL.format(deal_id='$1')),
+        # TM3_cusip_url=nw.col('cusip').str.replace(r'.*', TM3_CUSIP_URL.format(cusip='$1')),
+        # emma_url=nw.col('cusip').str.replace(r'.*', EMMA_URL.format(cusip='$1')),
     )
 
     # Calculate total par amount per deal
@@ -516,6 +520,7 @@ st.dataframe(
     shown_df,
     column_config=column_config | {name: None for name in hide},
     column_order=column_config.keys(),
+    hide_index=True,
 )
 
 # import plotly.express as px
