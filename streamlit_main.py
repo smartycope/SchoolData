@@ -476,6 +476,7 @@ with st.container(border=True):
                 exclude_null.append(col)
     # l, r = st.columns(2)
     show_coupons = st.checkbox("Show individual coupons", value=False)
+    exclude_taxable = st.checkbox("Exclude taxable", value=True)
     # l.form_submit_button("Submit")
 
 if not show_coupons:
@@ -498,6 +499,8 @@ shown = (
     .filter(nw.col(until_col) < dt.combine(until, dt.min.time()))
     .sort('reward', descending=True)
 )
+if exclude_taxable:
+    shown = shown.filter(nw.col('taxStatus') != 'US FEDERAL TAXABLE')
 if not dont_limit_range:
     shown = shown.filter((nw.col(range_col) >= range_min) & (nw.col(range_col) <= range_max))
 if not dont_limit_cusips:
