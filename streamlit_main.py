@@ -345,7 +345,7 @@ with st.sidebar:
         box = st.success
     l, r = st.columns([2, 1])
     with l:
-        box(f"Data is <{int((dt.now() - max_date).days)*-1} days old")
+        box(f"Data is <{int((max_date - dt.now()).days)} days old")
     if r.button('Update'):
         st.warning('This button doesn\'t currently do anything, but it will soon!')
 
