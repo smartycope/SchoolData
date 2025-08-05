@@ -2,13 +2,13 @@ import base64
 import hashlib
 from datetime import datetime as dt
 from datetime import timedelta
-
+from io import BytesIO
 import narwhals as nw
 import numpy as np
 import pandas as pd
 import pprp
-import streamlit as st
 from cryptography.fernet import Fernet
+import streamlit as st
 from streamlit import session_state as ss
 
 password_hash = {
@@ -54,12 +54,11 @@ def decrypt_file_to_df(encrypted_path: str, password: str):
     except Exception as e:
         raise ValueError("Invalid password or corrupted file.") from e
 
-    from io import BytesIO
     buffer = BytesIO(decrypted)
 
     return nw.from_native(pd.read_csv(buffer))
 
-st.set_page_config(page_title="School Data", layout="wide", page_icon="🏫", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="School Data", layout="wide", page_icon="🏫", initial_sidebar_state="expanded")
 
 if True:
     # Initialize session state variables
@@ -79,9 +78,18 @@ if True:
 
 @st.cache_data
 def get_preloaded_data():
-    return decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.session_state["authenticated"]), decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.session_state["authenticated"])
+    a = decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.session_state["authenticated"])
+    b = decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.session_state["authenticated"])
+    print(a)
+    print(b)
+    print(type(a))
+    print(type(b))
+    return (
+        a, b
+    )
 
 bonds, coupons = get_preloaded_data()
+
 @st.cache_data
 def get_target():
     global bonds, coupons
@@ -154,8 +162,6 @@ with st.sidebar:
     l, r = st.columns([2, 1])
     with l:
         box(f"Data is ~{int((dt.now() - max_date).days)} days old")
-    if r.button('Update'):
-        st.warning('This button doesn\'t currently do anything, but it will soon!')
 
     f"""
     Data range: {target['saleDate'].min().strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}
