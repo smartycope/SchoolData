@@ -1,10 +1,12 @@
 import streamlit as st
 from streamlit import session_state as ss
-import fitz  # PyMuPDF
+# import fitz  # PyMuPDF
 import re
-import ezregex
+# import ezregex
 from docx import Document
 import bs4
+from pdfminer.high_level import extract_text
+
 
 files = st.file_uploader('Upload a file or files to scrape', ['txt', 'pdf', 'html', 'docx'], True)
 
@@ -33,7 +35,7 @@ def parse_text(file):
         if (m := re.search('|'.join(ss.keywords), text, re.IGNORECASE)):
             rtn.append({
                 'file': file,
-                'page': 0,
+                # 'page': 0,
                 'text': text,
                 'match': m,
             })
@@ -47,7 +49,7 @@ def parse_docx(file):
     if (m := re.search('|'.join(ss.keywords), text, re.IGNORECASE)):
         rtn.append({
             'file': file,
-            'page': 0,
+            # 'page': 0,
             'text': text,
             'match': m,
         })
@@ -55,18 +57,30 @@ def parse_docx(file):
 
 
 def parse_pdf(file):
-    rtn = []
-    doc = fitz.open(file)
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
+    if False:
+        rtn = []
+        doc = fitz.open(file)
+        for page_num, page in enumerate(doc):
+            text = page.get_text()
+            if (m := re.search('|'.join(ss.keywords), text, re.IGNORECASE)):
+                rtn.append({
+                    'file': file,
+                    'page': page_num,
+                    'text': text,
+                    'match': m,
+                })
+        return rtn
+    else:
+        rtn = []
+        text = extract_text(file)
         if (m := re.search('|'.join(ss.keywords), text, re.IGNORECASE)):
             rtn.append({
                 'file': file,
-                'page': page_num,
+                # 'page': 0,
                 'text': text,
                 'match': m,
             })
-    return rtn
+        return rtn
 
 
 def parse_html(file):
@@ -76,7 +90,7 @@ def parse_html(file):
         if (m := re.search('|'.join(ss.keywords), text, re.IGNORECASE)):
             rtn.append({
                 'file': file,
-                'page': 0,
+                # 'page': 0,
                 'text': text,
                 'match': m,
             })
@@ -97,14 +111,15 @@ if not files:
     st.info("No files selected")
     st.stop()
 matches = []
-for i in files:
-    if (found := search(i)):
-        matches += found
+with st.spinner(f"Processing {len(files)} files"):
+    for i in files:
+        if (found := search(i)):
+            matches += found
 
 st.success(f"Found {len(matches)} matches")
 
 for i in matches:
-    st.write(f'In file `{i["file"].name}`, on page {i["page"] + 1}, found the text `{i["match"].group()}`')
+    st.write(f'In file `{i["file"].name}`, found the text `{i["match"].group()}`')
     with st.expander('Context'):
         st.code(i['text'][max(0, i['match'].start() - context_chars):min(len(i['text']), i['match'].end() + context_chars)], language='text')
 
