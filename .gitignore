@@ -1,9 +1,6 @@
-# ignore everything except README.md, index.html, requirements.txt, streamlit_main.py, and the 2 .bin files in backup_data
-*
-!README.md
-!index.html
-!requirements.txt
-!streamlit_main.py
-!backup_data/bonds_encrypted.bin
-!backup_data/coupons_encrypted.bin
-!.gitignore
+node_modules/**
+
+# Comment these out
+working/
+other_data/
+desktop_scraper

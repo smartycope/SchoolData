@@ -78,14 +78,9 @@ if True:
 
 @st.cache_data
 def get_preloaded_data():
-    a = decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.session_state["authenticated"])
-    b = decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.session_state["authenticated"])
-    print(a)
-    print(b)
-    print(type(a))
-    print(type(b))
     return (
-        a, b
+        decrypt_file_to_df('backup_data/bonds_encrypted.bin', st.session_state["authenticated"]),
+        decrypt_file_to_df('backup_data/coupons_encrypted.bin', st.session_state["authenticated"])
     )
 
 bonds, coupons = get_preloaded_data()
