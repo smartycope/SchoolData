@@ -19,7 +19,7 @@
         import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser/build/stlite.js";
 
         mount({
-            requirements: ['requests', 'pandas', 'cryptography', 'pprp', 'narwhals', 'pdfminer.six', 'beautifulsoup4', 'python-docx'],
+            requirements: ['requests', 'pandas==2.3.1', 'cryptography==45.0.5', 'pprp==0.2.5', 'narwhals==1.46.0'], // , 'pdfminer.six==20250506', 'beautifulsoup4==4.12.3', 'python-docx'
             entrypoint: "streamlit_main.py",
             files: {
                     "streamlit_main.py": { url: "./streamlit_main.py" },

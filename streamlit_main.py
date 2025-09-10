@@ -96,10 +96,6 @@ def get_target():
     # Join with bonds
     df = df.join(bonds, on='dealId', how='left')
 
-    print(df.shape)
-    print(df.columns)
-    # print(df)
-
     # Convert date columns and create URL columns
     df = df.with_columns(
         state=nw.col('state').cast(nw.String),
