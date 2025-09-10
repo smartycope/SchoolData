@@ -74,6 +74,8 @@ if True:
         elif given_password:
             st.error("Incorrect password. Please try again.")
         st.stop()
+else:
+    st.session_state["authenticated"] = "wrong_password"
 
 
 @st.cache_data
@@ -94,17 +96,22 @@ def get_target():
     # Join with bonds
     df = df.join(bonds, on='dealId', how='left')
 
+    print(df.shape)
+    print(df.columns)
+    # print(df)
+
     # Convert date columns and create URL columns
     df = df.with_columns(
-        # state=nw.col('state').cast(nw.String),
+        state=nw.col('state').cast(nw.String),
         datedDate=nw.col('datedDate').str.to_datetime(),
         maturity_date=nw.col('maturity_date').str.to_datetime(),
         first_coupon_date=nw.col('first_coupon_date').str.to_datetime(),
         first_call_date=nw.col('first_call_date').str.to_datetime(),
         saleDate=nw.col('saleDate').str.to_datetime(),
-        TM3_url=nw.col('dealId').map_batches(lambda x: np.array(TM3_DEAL_URL.format(deal_id=i) for i in x)),
-        TM3_cusip_url=nw.col('cusip').map_batches(lambda x: np.array(TM3_CUSIP_URL.format(cusip=i) for i in x)),
-        emma_url=nw.col('cusip').map_batches(lambda x: np.array(EMMA_URL.format(cusip=i) for i in x)),
+        # I hate these lines
+        TM3_url=np.array([TM3_DEAL_URL.format(deal_id=i) for i in df['dealId'].to_list()]),
+        TM3_cusip_url=np.array([TM3_CUSIP_URL.format(cusip=i) for i in df['cusip'].to_list()]),
+        emma_url=np.array([EMMA_URL.format(cusip=i) for i in df['cusip'].to_list()]),
     )
 
     # Calculate total par amount per deal
