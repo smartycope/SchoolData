@@ -19,11 +19,11 @@
         import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser/build/stlite.js";
 
         mount({
-            requirements: ['requests', 'pandas', 'polars', 'cryptography', 'pprp', 'narwhals', 'pdfminer.six', 'beautifulsoup4', 'python-docx'],
+            requirements: ['requests', 'pandas', 'cryptography', 'pprp', 'narwhals', 'pdfminer.six', 'beautifulsoup4', 'python-docx'],
             entrypoint: "streamlit_main.py",
             files: {
                     "streamlit_main.py": { url: "./streamlit_main.py" },
-                    "pages/keyword_scraper.py": { url: "./pages/keyword_scraper.py" },
+                    // "pages/keyword_scraper.py": { url: "./pages/keyword_scraper.py" },
                     "./backup_data/bonds_encrypted.bin": { url: "./backup_data/bonds_encrypted.bin" },
                     "./backup_data/coupons_encrypted.bin": { url: "./backup_data/coupons_encrypted.bin" },
                 },
