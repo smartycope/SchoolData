@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@stlite/browser": "^0.86.0"
+  }
+}

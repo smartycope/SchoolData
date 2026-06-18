@@ -8,9 +8,22 @@ import numpy as np
 import pandas as pd
 import pprp
 from cryptography.fernet import Fernet
+import cryptography
+import requests
 import streamlit as st
 from streamlit import session_state as ss
 from copy import copy
+
+
+if 'show_versions' not in ss:
+    print(f'''
+    narwhals: {nw.__version__}
+    numpy: {np.__version__}
+    pandas: {pd.__version__}
+    pprp: {pprp.__version__}
+    cryptography: {cryptography.__version__}
+    ''')
+    ss['show_versions'] = True
 
 password_hash = {
     'salt': 'yITsoJop3O7QiNnzSdeTSA==',
@@ -163,7 +176,7 @@ def decrypt_file_to_df(encrypted_path: str, password: str):
 
 st.set_page_config(page_title="School Data", layout="wide", page_icon="🏫", initial_sidebar_state="expanded")
 
-PASSWORD_FOR_DEBUGGING = ''
+PASSWORD_FOR_DEBUGGING = 'round_table_rocks'
 DEBUG = bool(PASSWORD_FOR_DEBUGGING)
 if DEBUG:
     st.session_state["authenticated"] = PASSWORD_FOR_DEBUGGING

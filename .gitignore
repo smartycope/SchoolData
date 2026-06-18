@@ -1,6 +1,6 @@
 node_modules/**
 
 # Comment these out
-working/
+# working/
 other_data/
-desktop_scraper
+desktop_scraper/
