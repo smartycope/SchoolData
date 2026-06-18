@@ -1,0 +1,7 @@
+[server]
+headless = true
+showEmailPrompt = false
+runOnSave = false
+address = "0.0.0.0"
+port = 8508
+maxUploadSize = 2048
