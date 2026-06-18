@@ -176,7 +176,7 @@ def decrypt_file_to_df(encrypted_path: str, password: str):
 
 st.set_page_config(page_title="School Data", layout="wide", page_icon="🏫", initial_sidebar_state="expanded")
 
-PASSWORD_FOR_DEBUGGING = 'round_table_rocks'
+PASSWORD_FOR_DEBUGGING = ''
 DEBUG = bool(PASSWORD_FOR_DEBUGGING)
 if DEBUG:
     st.session_state["authenticated"] = PASSWORD_FOR_DEBUGGING
