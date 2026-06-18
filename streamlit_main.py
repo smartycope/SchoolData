@@ -3,6 +3,7 @@ import hashlib
 from datetime import datetime as dt
 from datetime import timedelta
 from io import BytesIO
+import urllib.parse
 import narwhals as nw
 import numpy as np
 import pandas as pd
@@ -13,17 +14,13 @@ import requests
 import streamlit as st
 from streamlit import session_state as ss
 from copy import copy
+import os
 
+import urllib
 
-if 'show_versions' not in ss:
-    print(f'''
-    narwhals: {nw.__version__}
-    numpy: {np.__version__}
-    pandas: {pd.__version__}
-    pprp: {pprp.__version__}
-    cryptography: {cryptography.__version__}
-    ''')
-    ss['show_versions'] = True
+_min = min
+_max = max
+
 
 password_hash = {
     'salt': 'yITsoJop3O7QiNnzSdeTSA==',
@@ -44,6 +41,7 @@ if 'detail_log' not in ss: ss.detail_log = []
 if 'search_log_data' not in ss: ss.search_log_data = {}
 # Indexed by deal_id
 if 'detail_log_data' not in ss: ss.detail_log_data = {}
+if 'prev_state' not in ss: ss['prev_state'] = None
 
 DEFAULT_NULLS = [
     'tic',
@@ -55,7 +53,7 @@ DEFAULT_NULLS = [
     'total_par_amount',
 ]
 
-STATE_DEFAULTS = {
+DEFAULTS = {
     'show_coupons': False,
     'state': 'All',
     'filter_sale_date': False,
@@ -77,75 +75,6 @@ STATE_DEFAULTS = {
     'exclude_taxable': True,
     'hide_nulls': DEFAULT_NULLS,
 }
-
-if 'prev_state' not in st.session_state: st.session_state['prev_state'] = None
-
-def serialize_state(**kw):
-    """ Sets query params to the current state """
-    qp = st.query_params
-
-    for key, value in kw.items():
-        # NOTE: this only works because all the None values are defaults
-        # This would break if we had a non-default None value
-        # Might as well not include if it's the default
-        if value is None or value == STATE_DEFAULTS[key]:
-            if key in qp:
-                del qp[key]
-        elif isinstance(value, bool):
-            qp[key] = '1' if value else '0'
-        elif isinstance(value, dt):
-            qp[key] = value.strftime('%Y-%m-%d')
-        elif isinstance(value, list):
-            qp[key] = ';'.join(value)
-        else:
-            qp[key] = str(value)
-
-def deserialize_state():
-    """ Returns the default state, with query params overriding """
-    qp = st.query_params
-    def get_bool(key):
-        return qp.get(key, STATE_DEFAULTS[key]) == '1'
-
-    def get_date(key):
-        return qp.get(key, STATE_DEFAULTS[key])
-
-    def get_num(key, type):
-        try:
-            return type(qp.get(key, STATE_DEFAULTS[key]))
-        # If it got serialized as None, or if the default is None
-        except (ValueError, TypeError):
-            return None
-
-    def get_str(key):
-        return qp.get(key, STATE_DEFAULTS[key])
-
-    def get_list(key):
-        return qp.get(key, ';'.join(STATE_DEFAULTS[key])).split(';')
-
-    return {
-        'show_coupons': get_bool('show_coupons'),
-        'state': get_str('state'),
-        'filter_sale_date': get_bool('filter_sale_date'),
-        'sale_date_min': get_date('sale_date_min'),
-        'sale_date_max': get_date('sale_date_max'),
-        'exclude_matured': get_bool('exclude_matured'),
-        'maturity_date_min': get_date('maturity_date_min'),
-        'maturity_date_max': get_date('maturity_date_max'),
-        'filter_by': get_str('filter_by'),
-        'min_tic': get_num('min_tic', float),
-        'coupon_range_min': get_num('coupon_range_min', float),
-        'coupon_range_max': get_num('coupon_range_max', float),
-        'par_amount_min': get_num('par_amount_min', int),
-        'par_amount_max': get_num('par_amount_max', int),
-        'limit_cusips': get_bool('limit_cusips'),
-        'min_cusips': get_num('min_cusips', int),
-        'max_cusips': get_num('max_cusips', int),
-        'exclude_taxable': get_bool('exclude_taxable'),
-        'hide_nulls': get_list('hide_nulls'),
-    }
-
-# Read-only state defaults from query params
-STATE = deserialize_state()
 
 
 def verify_password(password: str, stored: dict):
@@ -176,7 +105,7 @@ def decrypt_file_to_df(encrypted_path: str, password: str):
 
 st.set_page_config(page_title="School Data", layout="wide", page_icon="🏫", initial_sidebar_state="expanded")
 
-PASSWORD_FOR_DEBUGGING = ''
+PASSWORD_FOR_DEBUGGING = os.getenv("SCHOOL_DATA_PASSWORD", '')
 DEBUG = bool(PASSWORD_FOR_DEBUGGING)
 if DEBUG:
     st.session_state["authenticated"] = PASSWORD_FOR_DEBUGGING
@@ -421,7 +350,7 @@ with st.sidebar:
     """
 
     # Nulls
-    exclude_null = STATE['hide_nulls'].copy()
+    exclude_null = DEFAULTS['hide_nulls'].copy()
     with st.expander("Null values", expanded=False):
         st.write("Check to exclude the schools with values which aren't provided in the following columns:")
         st.caption("Basically, if you ever find yourself going \"I keep seeing `None`, I wish those ones would go away\", use this.")
@@ -430,50 +359,54 @@ with st.sidebar:
         for cnt, tmp in enumerate(column_config.items()):
             col, name = tmp
             name = name if isinstance(name, str) else name['label']
-            if columns[cnt % num_cols].checkbox(name, value=col in STATE['hide_nulls'], key=col):
+            if columns[cnt % num_cols].checkbox(name, value=col in DEFAULTS['hide_nulls'], key=f'null_col_{col}', bind='query-params'):
                 exclude_null.append(col)
 
 # These are only here because they need to be defined so we can stuff them in serialize_state().
 # These ones aren't guaranteed to be defined, so we need to define them here.
 # The values are irrelevant, they get overridden if they're defined
-min_tic = STATE_DEFAULTS['min_tic']
-range_min = STATE_DEFAULTS['par_amount_min']
-range_max = STATE_DEFAULTS['par_amount_max']
-coupon_range_min = STATE_DEFAULTS['coupon_range_min']
-coupon_range_max = STATE_DEFAULTS['coupon_range_max']
+min_tic = DEFAULTS['min_tic']
+range_min = DEFAULTS['par_amount_min']
+range_max = DEFAULTS['par_amount_max']
+coupon_range_min = DEFAULTS['coupon_range_min']
+coupon_range_max = DEFAULTS['coupon_range_max']
 
 ############### UI ###############
-show_coupons = st.checkbox("Show individual coupons", value=STATE['show_coupons'])
+show_coupons = st.checkbox("Show individual coupons", value=DEFAULTS['show_coupons'], bind='query-params', key='show_coupons')
 with st.container(border=True):
     now = dt.now()
     six_months_ago = now - pd.offsets.DateOffset(months=6)
     six_months_from_now = now + pd.offsets.DateOffset(months=6)
 
-    l, m, r = st.columns([1, 2, 2])
+    l, m, r = st.columns([1, 2, 2], vertical_alignment='bottom')
     # State box
     with l:
         options = ['All'] + bonds['state'].unique().sort().to_list()
-        state = st.selectbox("State", options, index=options.index(STATE['state']))
+        state = st.selectbox("Filter by State", options, index=options.index(DEFAULTS['state']), key='state', bind='query-params')
     # Sale date range
     with m:
-        filter_sale_date = st.checkbox("Filter by sale date", value=STATE['filter_sale_date'])
-        val0, val1 = STATE['sale_date_min'] or target['saleDate'].min(), STATE['sale_date_max'] or target['saleDate'].max()
+        filter_sale_date = st.checkbox("Filter by sale date", value=DEFAULTS['filter_sale_date'], key='filter_sale_date', bind='query-params')
+        val0, val1 = DEFAULTS['sale_date_min'] or target['saleDate'].min(), DEFAULTS['sale_date_max'] or target['saleDate'].max()
         sale_date_min, sale_date_max = st.date_input(
             "Allowed Sale Date Range",
             value=(val0, val1),
-            disabled=not filter_sale_date)
+            disabled=not filter_sale_date,
+            key='sale_date', bind='query-params')
+    st.space()
     # Maturity date range & checkbox
     with r:
         exclude_matured = st.checkbox(
             "Exclude matured bonds, and bonds about to mature",
-            value=STATE['exclude_matured'],
-            help="If a coupon has a maturity date in the past, or in the next 6 months, don't include it. But if a bond has at least one coupon expiring more than 6 months in the future, include it."
+            value=DEFAULTS['exclude_matured'],
+            help="If a coupon has a maturity date in the past, or in the next 6 months, don't include it. But if a bond has at least one coupon expiring more than 6 months in the future, include it.",
+            key='exclude_matured', bind='query-params'
         )
-        val0, val1 = STATE['maturity_date_min'] or target['maturity_date'].min(), STATE['maturity_date_max'] or target['maturity_date'].max()
+        val0, val1 = DEFAULTS['maturity_date_min'] or target['maturity_date'].min(), DEFAULTS['maturity_date_max'] or target['maturity_date'].max()
         maturity_date_min, maturity_date_max = st.date_input(
             "Allowed Maturity Date Range",
             value=(val0, val1),
-            disabled=exclude_matured
+            disabled=exclude_matured,
+            key='maturity_date', bind='query-params'
         )
 
     l, r = st.columns([1, 3])
@@ -483,59 +416,39 @@ with st.container(border=True):
         else:
             options = ['TIC', 'Coupon Rate', 'Par Amount', "Nothing"]
         try:
-            index = options.index(STATE['filter_by'])
+            index = options.index(DEFAULTS['filter_by'])
         except ValueError:
             index = 0
-        filter_by = st.selectbox("Filter based on", options, key='filter_by', index=index)
+        filter_by = st.selectbox("Filter based on", options, key='filter_by', index=index, bind='query-params')
     with r:
         # TIC box
         if filter_by == 'TIC':
-            min_tic = st.number_input("Don't show deals with a TIC lower than", value=STATE['min_tic'])
+            min_tic = st.number_input("Don't show deals with a TIC lower than", value=DEFAULTS['min_tic'], key='min_tic', bind='query-params')
         elif filter_by == 'Par Amount':
             range_col = "total_par_amount" if not show_coupons else "par_amount"
             range_scale = 1_000
             min, max = int(target[range_col].min()//range_scale), 50_000
-            range_min, range_max = st.slider(f"{range_col.replace('_', ' ').title()} Range", min, max, (STATE['par_amount_min'] or min, STATE['par_amount_max'] or max), format='$%dK', step=range_scale)
+            range_min, range_max = st.slider(f"{range_col.replace('_', ' ').title()} Range", min, max, (DEFAULTS['par_amount_min'] or min, DEFAULTS['par_amount_max'] or max), format='$%dK', step=range_scale, key='par_amount', bind='query-params')
         elif filter_by == 'Coupon Rate':
             # scale = 1
             # min, max = int(target['coupon_rate'].min()//scale), 50_000
             min, max = target['coupon_rate'].min(), target['coupon_rate'].max()
-            coupon_range_min, coupon_range_max = st.slider(f"Coupon Rate Range", min, max, (STATE['coupon_range_min'] or min, STATE['coupon_range_max'] or max), format='%f%%', step=.1, help='If looking at deals instead of induvidual coupons, it only filters out deals where *all* of it\'s coupons are outside the range.')
+            coupon_range_min, coupon_range_max = st.slider(f"Coupon Rate Range", min, max, (DEFAULTS['coupon_range_min'] or min, DEFAULTS['coupon_range_max'] or max), format='%f%%', step=.1, help='If looking at deals instead of induvidual coupons, it only filters out deals where *all* of it\'s coupons are outside the range.', key='coupon_range', bind='query-params')
             # min_coupon_rate = st.number_input("Don't show deals with a coupon rate lower than", value=6.5)
-
+    st.space()
     # Number of coupons slider
     min, max = target['num_cusips'].min(), 20
     l, r = st.columns([1, 5], vertical_alignment='center')
-    limit_cusips = l.checkbox("Filter by number of coupons", value=STATE['limit_cusips'])
-    min_cusips, max_cusips = r.slider("Number of Coupons", min, max, (STATE['min_cusips'] or min, STATE['max_cusips'] or max), disabled=not limit_cusips)
+    limit_cusips = l.checkbox("Filter by number of coupons", value=DEFAULTS['limit_cusips'], key='limit_cusips', bind='query-params')
+    min_cusips, max_cusips = r.slider("Number of Coupons", min, max, (DEFAULTS['min_cusips'] or min, DEFAULTS['max_cusips'] or max), disabled=not limit_cusips, key='num_cusips', bind='query-params')
 
     # Checkboxes
-    exclude_taxable = st.checkbox("Exclude taxable", value=STATE['exclude_taxable'])
+    exclude_taxable = st.checkbox("Exclude taxable", value=DEFAULTS['exclude_taxable'], key='exclude_taxable', bind='query-params')
 
 ################## Save State ##################
 with share_button.container():
-    if st.button("Save Search"):
-        serialize_state(
-            show_coupons=show_coupons,
-            state=state,
-            filter_sale_date=filter_sale_date,
-            sale_date_min=sale_date_min,
-            sale_date_max=sale_date_max,
-            exclude_matured=exclude_matured,
-            maturity_date_min=maturity_date_min,
-            maturity_date_max=maturity_date_max,
-            filter_by=filter_by,
-            min_tic=min_tic,
-            coupon_range_min=coupon_range_min,
-            coupon_range_max=coupon_range_max,
-            par_amount_min=range_min,
-            par_amount_max=range_max,
-            limit_cusips=limit_cusips,
-            min_cusips=min_cusips,
-            max_cusips=max_cusips,
-            exclude_taxable=exclude_taxable,
-            hide_nulls=exclude_null,
-        )
+    scheme, netloc, path, params, query, fragment = urllib.parse.urlparse(st.context.url)
+    st.link_button("Reset Filters", f'{scheme}://{netloc}{path}')
 
 ############### Data Filtering ###############
 if not show_coupons:
@@ -609,7 +522,6 @@ else:
     )
     breakdown.append(('Maturity Date out of range', len(shown)))
 
-# st.write(exclude_null)
 for col in exclude_null:
     shown = shown.filter(~nw.col(col).is_null())
     breakdown.append((col.replace('_', ' ').title() + ' not provided', len(shown)))
@@ -634,14 +546,40 @@ with r.expander("Breakdown"):
 
 shown_df = shown.to_pandas()
 
-# Display the data
-st.dataframe(
-    shown_df,
-    column_config=column_config | {name: None for name in hide},
-    column_order=column_config.keys(),
-    hide_index=True,
-)
 
-# import plotly.express as px
-# fig = px.histogram(data_frame=deals, x='num_cusips')
-# st.plotly_chart(fig)
+rows_per_page = 10
+total_pages = (len(shown_df) + rows_per_page - 1) // rows_per_page
+
+if total_pages <= 0:
+    st.caption("No results match the given filters")
+    st.stop()
+
+if total_pages == 1:
+    st.dataframe(
+        shown_df,
+        column_config=column_config | {name: None for name in hide},
+        column_order=column_config.keys(),
+        hide_index=True,
+    )
+else:
+    # Use placeholders to show dataframe above pagination
+    dataframe_slot = st.empty()
+    with st.container(horizontal_alignment="right"):
+        page = st.pagination(num_pages=total_pages)
+
+    start_idx = (page - 1) * rows_per_page
+    end_idx = start_idx + rows_per_page
+    dataframe_slot.dataframe(
+        shown_df.iloc[start_idx:end_idx],
+        column_config=column_config | {name: None for name in hide},
+        column_order=column_config.keys(),
+        hide_index=True,
+    )
+
+try:
+    import plotly.express as px
+    with st.expander("Distribution of the number of cusips for this search"):
+        fig = px.histogram(data_frame=deals, x='num_cusips', labels={'num_cusips': 'Number of Coupons'})
+        st.plotly_chart(fig)
+except ImportError:
+    pass
