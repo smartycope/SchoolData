@@ -13,6 +13,7 @@ pandas = "^3.0.3"
 cryptography = "^49.0.0"
 pprp = "^0.2.7"
 narwhals = "^2.22.1"
+streamlit = "^1.58.0"
 
 
 [build-system]
